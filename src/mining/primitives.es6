@@ -263,38 +263,18 @@ export function distanceFromCache (aChunks: string[], b: string): number {
   // }, 0)
   return Math.floor(value * 1000000000000000) // TODO: Move to safe MATH
 }
-// this is an implementation of distance that
-// allows us to not recalculate the split() and reverse()
-// of a every time, since it's constant
-export function distanceFromCache (aChunks: string[], b: string): number {
-  //const aChunks = reverse(splitEvery(32, split(a)))
-  const bChunks = split(b)
-  const bchunkslength = Math.ceil(bChunks.length/32)
-  let value = 0
-  const len = Math.min(aChunks.length,bchunkslength)
-  for(var i = 0; i < len;i++) {
-    const theend = Math.min(32*(i+1),bChunks.length)
-    //logger.info('aChunks: '+aChunks[i]+' '+aChunks[i].length)
-    value += dist(bChunks.slice(32*i,theend),aChunks[i])
-  }
-  
-  //const chunks = zip(aChunks, bChunks)
-  //const value = chunks.reduce(function (all, [a, b]) {
-  //  return all + dist(b, a)
-  //}, 0)
-  
-  // TODO this is the previous implementation - because of
-  // ac.pop() we need to reverse(aChunks) to produce same number
-  // is that correct or just side-effect?
-  // const value = bc.reduce(function (all, bd, i) {
-  //   return all + dist(bd, ac.pop())
-  // }, 0)
-  return Math.floor(value * 1000000000000000) // TODO: Move to safe MATH
-}
+
 /**
  * Finds the mean of the distances from a provided set of hashed header proofs
  *
-@@ -248,26 +278,27 @@ export function distance (a: string, b: string): number {
+ * @param {number} currentTimestamp current time reference
+ * @param {string} work reference to find distance > `threshold`
+ * @param {string} miner Public address to which NRG award for mining the block and transactions will be credited to
+ * @param {string} merkleRoot Mekle root of the BC block being mined
+ * @param {number} threshold threshold for the result to be valid
+ * @param {function} difficultyCalculator function for recalculating difficulty at given timestamp
+ * @returns {Object} result containing found `nonce` and `distance` where distance is > `threshold` provided as parameter
+ */
 // $FlowFixMe will never return anything else then a mining result
 export function mine (currentTimestamp: number, work: string, miner: string, merkleRoot: string, threshold: number, difficultyCalculator: ?Function): { distance: string, nonce: string, timestamp: number, difficulty: string } {
   let difficulty = threshold
@@ -303,40 +283,40 @@ export function mine (currentTimestamp: number, work: string, miner: string, mer
   const tsStart = ts.now()
   const maxCalculationEnd = tsStart + (MAX_TIMEOUT_SECONDS * 1000)
   let currentLoopTimestamp = currentTimestamp
+
   const workChunks = reverse(splitEvery(32, split(work)))
+
   let iterations = 0
   let res = null
   let nowms = 0
   let now = 0
   let nonce = String(Math.abs(Random.engines.nativeMath())) // random string  
   while (true) {
-    iterations += 1
     iterations += 1   
-    if (maxCalculationEnd < ts.now()) {
-      break
-    }
+
     // TODO optimize not to count each single loop
-    let now = ts.nowSeconds()
-    // recalculate difficulty each second
-    if (difficultyCalculator && currentLoopTimestamp < now) {
-      currentLoopTimestamp = now
-      difficulty = difficultyCalculator(now)
-      logger.debug(`In timestamp: ${currentLoopTimestamp} recalculated difficulty is: ${difficulty}`)
     nowms = ts.now()
     now   = (nowms/1000)<<0
     if (maxCalculationEnd < nowms) {
       break
     }
+
     let nonce = String(Math.abs(Random.engines.nativeMath())) // random string
-@@ -281,18 +312,28 @@ export function mine (currentTimestamp: number, work: string, miner: string, mer
+    let nonceHash = blake2bl(nonce)
+    result = distance(work, blake2bl(miner + merkleRoot + nonceHash + currentLoopTimestamp))
+    if (new BN(result).gt(new BN(difficulty)) === true) {
+      res = {
+        distance: (result).toString(),
+        nonce,
+        timestamp: currentLoopTimestamp,
         difficulty,
         // NOTE: Following fields are for debug purposes only
         iterations,
-        timeDiff: ts.now() - tsStart
         timeDiff: nowms - tsStart
       }
       break
     }    
+
     // recalculate difficulty each second
     if (difficultyCalculator && currentLoopTimestamp < now) {
       currentLoopTimestamp = now
@@ -344,17 +324,16 @@ export function mine (currentTimestamp: number, work: string, miner: string, mer
       difficultyBN = new BN(difficulty)
       //logger.info(`In timestamp: ${currentLoopTimestamp} recalculated difficulty is: ${difficulty}`)
     }
-  }
-  const tsEnd = ts.now()
-  const tsDiff = tsEnd - tsStart
-  if (res === null) {
-    throw Error(`Mining took more than ${MAX_TIMEOUT_SECONDS}s, iterations: ${iterations}, tsDiff: ${tsDiff} ending...`)
+
     nonce = String(Math.abs(Random.engines.nativeMath())) // random string
     const nonceHash = blake2bl(nonce)
     result = distanceFromCache(workChunks, blake2bl(miner + merkleRoot + nonceHash + currentLoopTimestamp))
+
     
   }
+
   logger.info('mining took '+iterations+' iterations in '+res.timeDiff+' ms!')
+
   return res
 }
 
@@ -684,5 +663,3 @@ export function prepareNewBlock (currentTimestamp: number, lastPreviousBlock: Bc
 
   return [newBlock, currentTimestamp]
 }
-
-  
